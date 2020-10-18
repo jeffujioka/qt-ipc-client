@@ -11,72 +11,69 @@ IpcClient::IpcClient(QObject *parent)
 
 }
 
+// FIXME: refactor: move it to an "util" header.
+/// \brief   Helper function to create a new Thread.
+/// \details Creates a new Thread then move \a worker to it.
+///          Concept for Worker typename
+/// \code{.cpp}
+/// class Worker : public {
+/// signals:
+///     void finished();
+///     void error();
+/// };
+/// \endcode
+///          Worker::finished
+template <typename Worker>
+QThread* newThread(Worker* worker) {
+    QThread* thread = new QThread;
+    worker->moveToThread(thread);
+
+    QObject::connect(thread, &QThread::started,
+                     worker, &Worker::process);
+    QObject::connect(worker, &Worker::finished,
+                     thread, &QThread::quit);
+    QObject::connect(worker, &Worker::finished,
+                     worker, &Worker::deleteLater);
+    QObject::connect(thread, &QThread::finished,
+                     thread, &QThread::deleteLater);
+
+    return thread;
+}
+
 void IpcClient::sendData(const QString& srvName, int bytes) {
     qDebug() << "sending [" << bytes << "] bytes to [" << srvName << "]";
 
     // Initialy I had created an IpcClientThread (inhireted from QThread)
     // then I was trying to start it here but I was getting the following error:
     // QObject: Cannot create children for a parent that is in a different thread
-    // so I googled it and found this: https://wiki.qt.io/QThreads_general_usage
-    QThread* thread = new QThread;
-    IpcClientSendWorker * worker = new IpcClientSendWorker(srvName, bytes);
-    worker->moveToThread(thread);
+    // so I googled it and found this: https://wiki.qt.io/QThreads_general_usage.
+    // but it also didn't work and I am still getting the same error.
 
-    connect(worker, &IpcClientSendWorker::error, this, ([this](QString err)
-            {
-                qDebug() << "Error: " << err;
-                emit error();
-            }));
-    connect(thread, &QThread::started,
-            worker, &IpcClientSendWorker::process);
-    connect(worker, &IpcClientSendWorker::finished,
-            thread, &QThread::quit);
-    connect(worker, &IpcClientSendWorker::finished,
-            worker, &IpcClientSendWorker::deleteLater);
-    connect(thread, &QThread::finished, ([this]()
-            {
-                emit sendFinished();
-            }));
-    connect(thread, &QThread::finished,
-            thread, &QThread::deleteLater);
+    auto worker = new IpcClientSendWorker(srvName, bytes);
+    QThread* thread = newThread<IpcClientSendWorker>(worker);
+
+    // connecting worker's error signal to IpcClient::error
+    QObject::connect(worker, &IpcClientSendWorker::error,
+                     this, &IpcClient::error);
+    // connecting QThread'::'s finished signal to IpcClient::sendFinished
+    QObject::connect(thread, &QThread::finished,
+                     this, &IpcClient::sendFinished);
 
     thread->start();
 }
 
 void IpcClient::getData(const QString& srvName, const QString& fileName) {
     qDebug() << "getData " << srvName << " " << fileName;
-    QThread* thread = new QThread;
-    IpcClientGetWorker * worker = new IpcClientGetWorker(srvName, fileName);
-    worker->moveToThread(thread);
 
-    connect(worker, &IpcClientGetWorker::error, this, ([this](QString err)
-            {
-                qDebug() << "Error: " << err;
-                emit error();
-            }));
-    connect(thread, &QThread::started,
-            worker, &IpcClientGetWorker::process);
-    connect(worker, &IpcClientGetWorker::finished,
-            thread, &QThread::quit);
-    connect(worker, &IpcClientGetWorker::finished,
-            worker, &IpcClientGetWorker::deleteLater);
-    connect(thread, &QThread::finished, ([this]()
-            {
-                emit getFinished();
-            }));
-    connect(thread, &QThread::finished,
-            thread, &QThread::deleteLater);
+    auto worker = new IpcClientGetWorker(srvName, fileName);
+    QThread* thread = newThread<IpcClientGetWorker>(worker);
+
+    // connecting worker's error signal to IpcClient::error
+    QObject::connect(worker, &IpcClientGetWorker::error,
+                     this, &IpcClient::error);
+    // connecting QThread'::'s finished signal to IpcClient::getFinished
+    QObject::connect(thread, &QThread::finished,
+                     this, &IpcClient::getFinished);
 
     thread->start();
 }
-
-void IpcClient::errorString(QString err) {
-    qDebug() << "Error: " << err;
-    emit error();
-}
-
-void IpcClient::threadFinished() {
-    qDebug() << "IpcClient finished!!!";
-    emit getFinished();
-}
-

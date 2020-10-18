@@ -29,6 +29,14 @@ void IpcClientSendWorker::process() {
     socket.connectToServer(srvName);
 }
 
+/// \details  IPC Protocol for getting data is described below:
+///           Client: send 8-bit data (IpcProtReqId::kIpcProtReqIdStore, decimal 156)
+///           Client: send bytesToSend bytes (in chunks of kIpcMaxPayloadLength)
+///           of dummy data to the Server.
+///           Client: receive 32-bit data from Server.
+///                   Current implementation only supports receiving
+///                   kIpcProtAck (0xdeadbeef) but Server could respond with
+///                   some other Error Code.
 void IpcClientSendWorker::sendRequest() {
     qDebug() << "IpcClientSendWorker connected to [" << srvName << "]";
 
@@ -50,12 +58,14 @@ void IpcClientSendWorker::sendRequest() {
         emit error(err);
         return;
     }
+    // fill buffer with dummy ASCII data
     fillWithASCII(buffer, kIpcMaxPayloadLength);
 
     while (remainingBytes > 0) {
         auto bytesToWrite = qMin(remainingBytes,
                                  static_cast<qint64>(kIpcMaxPayloadLength));
 
+        // write up to kIpcMaxPayloadLength to the Server
         qint64 bytesWritten = socket.write(buffer, bytesToWrite);
 
         if (bytesWritten < 0) {
@@ -63,6 +73,7 @@ void IpcClientSendWorker::sendRequest() {
                 QString err{"Error writing data"};
                 qDebug() << err;
                 emit error(err);
+                if (buffer) delete[] buffer;
                 return;
             }
         }
@@ -72,7 +83,7 @@ void IpcClientSendWorker::sendRequest() {
     }
     socket.flush();
     if (buffer) delete[] buffer;
-
+    // no error has occured so let's wait for Server's ACK
     waitForAck();
 }
 

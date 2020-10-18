@@ -1,6 +1,8 @@
 #ifndef TESTCLASS_H
 #define TESTCLASS_H
 
+// FIXME IpcClientGetWorker and IpcClientSendWorker shall inherit from it
+#if 0
 #include <QDataStream>
 #include <QFile>
 #include <QLocalSocket>
@@ -34,6 +36,6 @@ protected:
    QDataStream out;
    QByteArray block;
 };
-
+#endif
 
 #endif // TESTCLASS_H

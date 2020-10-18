@@ -1,5 +1,5 @@
 #include "ipcclientworker.h"
-
+#if 0
 #include "ipccommon.h"
 
 IpcClientWorker::IpcClientWorker(const QString& srvName)
@@ -48,3 +48,4 @@ void IpcClientWorker::waitForAck() {
         emit error(err);
     }
 }
+#endif

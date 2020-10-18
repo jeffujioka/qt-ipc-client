@@ -28,7 +28,7 @@ signals:
 
 private:
     QString srvName;
-    uint bytesToSend;
+    quint32 bytesToSend;
     QLocalSocket socket;
     QDataStream in;
 };

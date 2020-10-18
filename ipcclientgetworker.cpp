@@ -31,6 +31,14 @@ void IpcClientGetWorker::process() {
     socket.connectToServer(srvName);
 }
 
+/// \details  IPC Protocol for getting data is described below:
+///           Client: send 8-bit data (IpcProtReqId::kIpcProtReqIdGet, decimal 157)
+///           Client: receive 64-bit data representing the number of bytes
+///                   to received from Server.
+///           Client: send 32-bit data (kIpcProtAck, 0xdeadbeef) to Server.
+///                   Current implementation only supports sending
+///                   kIpcProtAck (0xdeadbeef) but Server could treat other
+///                   Error Codes (e.g. re-send last packet).
 void IpcClientGetWorker::sendRequest() {
     qDebug() << "Connected to [" << srvName << "]";
 
@@ -48,14 +56,16 @@ void IpcClientGetWorker::sendRequest() {
         return;
     }
 
-    qint64 fileSize;
+    qint64 totalBytesToReceiveFromServer;
 
-    in >> fileSize;
+    // read 64-bit from Server through socket.
+    in >> totalBytesToReceiveFromServer;
 
     uint totalReadBytes = 0;
 
     QString errMsg;
 
+    // opens the file to store the data received from Server.
     if (!openFile(QIODevice::WriteOnly
                   | QIODevice::Text | QIODevice::Truncate)) {
         errMsg.append("Error opening file ")
@@ -64,10 +74,11 @@ void IpcClientGetWorker::sendRequest() {
         goto exit;
     }
 
-    while (totalReadBytes < fileSize)
+    while (totalReadBytes < totalBytesToReceiveFromServer)
     {
         char data[kIpcMaxPayloadLength];
 
+        // reads in chunks of kIpcMaxPayloadLength
         auto readBytes = socket.read(data, kIpcMaxPayloadLength);
 
         if (readBytes < 0) {
@@ -80,13 +91,12 @@ void IpcClientGetWorker::sendRequest() {
         }
 
         totalReadBytes += readBytes;
-#if 0
-        qDebug() << "Writing " << readBytes
-                 << "/" << totalReadBytes << " of " << fileSize;
-#endif
+
+        // writes readBytes bytes read from Server to the file
         file->write(data, readBytes);
 
-        if (totalReadBytes < fileSize && in.atEnd()) {
+        if (totalReadBytes < totalBytesToReceiveFromServer && in.atEnd()) {
+            // there no enough data so let's wait the server to send more
             if (!socket.waitForReadyRead()) {
                 errMsg.append("error waiting more data: ")
                       .append(socket.errorString());
@@ -94,6 +104,7 @@ void IpcClientGetWorker::sendRequest() {
             }
         }
     }
+
     sendAck();
     qDebug() << "//////////////////////"
              << "totalReadBytes: " << totalReadBytes;
@@ -103,13 +114,15 @@ void IpcClientGetWorker::sendRequest() {
 
     if (!errMsg.isEmpty()) {
         qDebug() << errMsg;
-        emit error(errMsg);
+        emit error(errMsg); // notifies an error
     } else {
-        emit finished();
+        emit finished(); // notifies the end of the worker's processing
     }
 }
 
 void IpcClientGetWorker::sendAck() {
+    // there is no need to use QDataStream to encode ACK but I started using it
+    // and had no time to change it.
     QByteArray block;
     QDataStream out(&block, QIODevice::WriteOnly);
     out.setVersion(QDataStream::Qt_5_10);
